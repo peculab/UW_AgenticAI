@@ -1,10 +1,11 @@
-# Colab-ready version.
-# Upload/run this file in Google Colab. Charts and tables are displayed inline;
-# no result images, HTML files, CSVs, logs, or manifests are written.
+# Notebook/local-ready version.
+# In notebook runtimes, charts can be displayed inline. In local terminal runs,
+# charts and selected result tables are written to the results folder.
 
 from pathlib import Path as _Path
 import importlib.util as _importlib_util
 import json as _json
+import os as _os
 import sys as _sys
 
 try:
@@ -15,7 +16,7 @@ except Exception:
         for obj in objs:
             print(obj)
 
-IN_COLAB = _importlib_util.find_spec("google.colab") is not None
+IN_NOTEBOOK = _importlib_util.find_spec("IPython") is not None
 try:
     _SCRIPT_DIR = _Path(__file__).resolve().parent
 except NameError:
@@ -23,12 +24,57 @@ except NameError:
 
 try:
     import plotly.io as _pio
-    _pio.renderers.default = "colab" if IN_COLAB else "notebook_connected"
+    _pio.renderers.default = "notebook_connected" if IN_NOTEBOOK else "browser"
 except Exception as _exc:
     print(f"Plotly renderer setup skipped: {_exc}")
 
+SHOW_PLOTS = IN_NOTEBOOK or _os.getenv("SHOW_PLOTS", "0").lower() in {"1", "true", "yes"}
+SAVE_RESULTS = (not IN_NOTEBOOK) or _os.getenv("SAVE_RESULTS", "0").lower() in {"1", "true", "yes"}
+RESULTS_DIR = _SCRIPT_DIR / "results"
+_PLOT_COUNTER = 0
+
+
+def _safe_name(name):
+    return "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in str(name)).strip("_")
+
+
+def show_plot(fig, name=None):
+    global _PLOT_COUNTER
+    if SAVE_RESULTS:
+        RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+        _PLOT_COUNTER += 1
+        output_name = _safe_name(name or f"plotly_figure_{_PLOT_COUNTER:02d}")
+        output_path = RESULTS_DIR / f"{output_name}.html"
+        fig.write_html(str(output_path), include_plotlyjs="cdn")
+        print(f"Saved Plotly chart: {output_path}")
+    if SHOW_PLOTS:
+        try:
+            from IPython.display import HTML, display
+            display(HTML(fig.to_html(include_plotlyjs="cdn", full_html=False)))
+        except Exception as exc:
+            print(f"Plot display failed but execution will continue: {exc}")
+            print("Set SHOW_PLOTS=0 to skip inline chart display.")
+    else:
+        print("Plot display skipped. Set SHOW_PLOTS=1 to display charts.")
+
+
+def show_matplotlib_plot(name=None):
+    global _PLOT_COUNTER
+    if SAVE_RESULTS:
+        RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+        _PLOT_COUNTER += 1
+        output_name = _safe_name(name or f"matplotlib_figure_{_PLOT_COUNTER:02d}")
+        output_path = RESULTS_DIR / f"{output_name}.png"
+        plt.savefig(output_path, dpi=160, bbox_inches="tight")
+        print(f"Saved Matplotlib chart: {output_path}")
+    if SHOW_PLOTS:
+        plt.show()
+    else:
+        plt.close()
+        print("Matplotlib display skipped. Set SHOW_PLOTS=1 to display charts.")
+
 def _install_result_hooks():
-    """Compatibility no-op. Colab displays figures inline via normal show()."""
+    """Compatibility no-op. Interactive environments display figures via normal show()."""
     return None
 
 def _json_default(obj):
@@ -53,11 +99,48 @@ def _json_default(obj):
     return str(obj)
 
 def _save_object(name, obj):
-    """Compatibility no-op. Kept so optional output_name arguments do not save."""
-    return None
+    """Save lightweight result objects when running locally."""
+    if not SAVE_RESULTS:
+        return None
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    safe = _safe_name(name)
+    try:
+        import pandas as pd
+        if isinstance(obj, pd.DataFrame):
+            path = RESULTS_DIR / f"{safe}.csv"
+            obj.to_csv(path, index=True)
+            print(f"Saved DataFrame: {path}")
+            return path
+        if isinstance(obj, pd.Series):
+            path = RESULTS_DIR / f"{safe}.json"
+            path.write_text(_json.dumps(obj.to_dict(), indent=2, default=_json_default), encoding="utf-8")
+            print(f"Saved Series: {path}")
+            return path
+    except Exception:
+        pass
+    path = RESULTS_DIR / f"{safe}.json"
+    path.write_text(_json.dumps(obj, indent=2, default=_json_default), encoding="utf-8")
+    print(f"Saved object: {path}")
+    return path
 
 def _save_named_results(scope, cell_idx=None):
-    """Compatibility no-op. This Colab version does not save generated outputs."""
+    """Save selected teaching outputs without dumping large tensors."""
+    if not SAVE_RESULTS:
+        return None
+    names = [
+        "current_signal",
+        "cnn_signal_table",
+        "search_results",
+        "ranked_results",
+        "best_params",
+        "decision_explanations",
+        "summary",
+        "agentic_context",
+        "agentic_llm_report",
+    ]
+    for name in names:
+        if name in scope:
+            _save_object(name, scope[name])
     return None
 
 
@@ -65,7 +148,7 @@ def _save_named_results(scope, cell_idx=None):
 '''
 # Agentic AI FX Trading Demo: GAF-CNN + DQN
 
-This Colab notebook is a 15-minute demo scaffold for an agentic FX trading workflow.
+This notebook is a 15-minute demo scaffold for an agentic FX trading workflow.
 
 1. Encode OHLC candlestick windows as GAF images and train a CNN to classify the current signal.
 2. Train a compact Deep Q Network to choose long / flat / short actions.
@@ -91,7 +174,7 @@ This Colab notebook is a 15-minute demo scaffold for an agentic FX trading workf
 '''
 ## Environment Setup
 
-The cell below installs the packages needed by the demo when running in Google Colab. It does not write a `requirements-colab.txt` file; all charts and tables are displayed inline in the notebook output.
+The cell below lists the packages needed by the demo. Set `RUN_INSTALL = True` if the current runtime does not already have these packages.
 '''
 
 # %% cell 3
@@ -115,11 +198,11 @@ google-genai
 print("Demo package requirements:")
 print("\n".join(REQUIREMENTS))
 
-RUN_INSTALL = IN_COLAB  # Change to True to force installation in VS Code/local Python.
+RUN_INSTALL = False  # Change to True to install packages in the current runtime.
 
 if RUN_INSTALL:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", *REQUIREMENTS])
-    print("Package installation complete. Runtime restart may be needed if Colab preloaded older packages.")
+    print("Package installation complete. Runtime restart may be needed if older packages were already loaded.")
 else:
     print("Local runtime detected; skipping pip install. Set RUN_INSTALL = True to install anyway.")
 
@@ -190,7 +273,7 @@ _install_result_hooks()
 
 
 def ensure_pretrained_cnn_model(model_path=PRETRAINED_CNN_MODEL_PATH):
-    """Return a local CNN model path, asking Colab users to upload it if needed."""
+    """Return a local CNN model path."""
     model_path = Path(model_path)
     candidate_paths = [
         model_path,
@@ -201,24 +284,9 @@ def ensure_pretrained_cnn_model(model_path=PRETRAINED_CNN_MODEL_PATH):
         if candidate.exists():
             return candidate
 
-    if IN_COLAB:
-        print(
-            "Pretrained CNN model not found. Please upload cnn_model_10bar.h5 "
-            "with the file picker that opens below."
-        )
-        from google.colab import files
-        uploaded = files.upload()
-        if model_path.name in uploaded:
-            return Path.cwd() / model_path.name
-        for uploaded_name in uploaded:
-            uploaded_path = Path.cwd() / uploaded_name
-            if uploaded_path.suffix.lower() in {".h5", ".keras"}:
-                print(f"Using uploaded model file: {uploaded_name}")
-                return uploaded_path
-
     raise FileNotFoundError(
-        "Pretrained CNN model not found. In Colab, upload cnn_model_10bar.h5 "
-        "when prompted. Locally, put it next to this script or run from the project folder."
+        "Pretrained CNN model not found. Put cnn_model_10bar.h5 next to this script "
+        "or in the current working directory."
     )
 
 _save_named_results(globals(), cell_idx=4)
@@ -227,7 +295,7 @@ _save_named_results(globals(), cell_idx=4)
 '''
 ## 1. Load FX Data
 
-Colab downloads recent OHLC data from Yahoo Finance so the final row can be treated as the current market signal. If the download fails, the notebook falls back to synthetic OHLC data so the class demo can continue.
+The notebook downloads recent OHLC data from Yahoo Finance so the final row can be treated as the current market signal. If the download fails, it falls back to synthetic OHLC data so the class demo can continue.
 '''
 
 # %% cell 6
@@ -315,7 +383,7 @@ def plot_price_candles_continuous(price_df, title, output_name=None):
         showlegend=False,
     )
     add_continuous_time_axis(fig, price_df.index)
-    fig.show()
+    show_plot(fig, name=output_name or "price_candles")
     if output_name:
         _save_object(output_name, price_df)
     return price_df
@@ -469,7 +537,7 @@ for i, name in enumerate(["Close", "Upper", "Lower", "Real body"]):
     axes[i].set_title(name)
     axes[i].axis("off")
 plt.suptitle(f"Latest {WINDOW}-bar candlestick window encoded as GAF image")
-plt.show()
+show_matplotlib_plot("latest_gaf_channels")
 
 _save_named_results(globals(), cell_idx=10)
 
@@ -674,7 +742,7 @@ def plot_cnn_signal_price_chart(model, max_points=None, confidence_threshold=0.5
         margin={"l": 50, "r": 30, "t": 90, "b": 40}
     )
     add_continuous_time_axis(fig, price_df.index)
-    fig.show()
+    show_plot(fig, name="cnn_signal_price_chart")
     return signal_df
 
 
@@ -763,7 +831,7 @@ def inspect_gaf_cnn_window(sample_idx=-1):
 
     plt.suptitle(f"Window ending at {window_df.index[-1]} | derived bias: {signal_names[pred_signal_id]}")
     plt.tight_layout()
-    plt.show()
+    show_matplotlib_plot(f"gaf_cnn_window_{sample_idx}")
 
 
 # Change this index to inspect another historical window, e.g. -20, -100, or 250.
@@ -901,9 +969,10 @@ _save_named_results(globals(), cell_idx=20)
 
 # %% cell 22
 # SEARCH_HELPER: execution rule defaults and reusable backtest functions
-DEFAULT_MIN_HOLD_BARS = 720       # Higher value = fewer trades. For 1h data, 720 bars is about 30 days.
+DEFAULT_MIN_HOLD_BARS = 180       # For 1h data, 180 bars is about 7.5 days.
 DEFAULT_SWITCH_MARGIN = 0.025     # New action must beat current action by this Q-value margin.
 DEFAULT_ENTER_MARGIN = 0.015      # Leave flat only when best action beats flat by this margin.
+MAX_TRADES_PER_MONTH = 4          # Hard limit for strategy selection.
 
 
 def smooth_actions(q, min_hold_bars=DEFAULT_MIN_HOLD_BARS,
@@ -972,12 +1041,12 @@ _save_named_results(globals(), cell_idx=22)
 # PARAMETER_SEARCH: target 10-12% annualized return with stricter risk filters
 TARGET_ANNUAL_RETURN = 0.10  # More realistic target than 15%
 MAX_ACCEPTABLE_TEST_DRAWDOWN = -0.12  # Stricter drawdown filter (was -0.20)
-MAX_TEST_TRADES = 500  # Allow more trades for better opportunity capture
+MAX_TEST_TRADES = 96  # Roughly two years of hourly data at four trades per month.
 
-# Expanded parameter grid for better optimization
-MIN_HOLD_GRID = [12, 24, 48, 72, 120, 168]  # Shorter holding periods allow more trades
-SWITCH_MARGIN_GRID = [0.0001, 0.0005, 0.001, 0.002, 0.003, 0.005, 0.008, 0.010, 0.015]
-ENTER_MARGIN_GRID = [0.00005, 0.0001, 0.0005, 0.001, 0.002, 0.003, 0.005, 0.008, 0.010]
+# Low-frequency grid: four trades per month means about one action change per week.
+MIN_HOLD_GRID = [180, 240, 360, 480, 720]  # 7.5, 10, 15, 20, and 30 days for 1h data.
+SWITCH_MARGIN_GRID = [0.005, 0.010, 0.015, 0.020, 0.025, 0.030, 0.040]
+ENTER_MARGIN_GRID = [0.003, 0.005, 0.008, 0.010, 0.015, 0.020]
 
 
 def bars_per_year_from_times(times):
@@ -986,17 +1055,46 @@ def bars_per_year_from_times(times):
     return float(pd.Timedelta(days=365) / median_step)
 
 
-def policy_metrics_for_slice(net_returns, actions_slice, bars_per_year):
+def monthly_trade_stats(actions_slice, times_slice):
+    if len(actions_slice) == 0:
+        return {"max_trades_per_month": 0, "avg_trades_per_month": 0.0, "active_months": 0}
+    ts = pd.to_datetime(times_slice)
+    action_changes = np.r_[False, actions_slice[1:] != actions_slice[:-1]]
+    change_months = pd.Series(ts[action_changes]).dt.to_period("M")
+    monthly_counts = change_months.value_counts()
+    active_months = max(1, len(pd.Series(ts).dt.to_period("M").unique()))
+    return {
+        "max_trades_per_month": int(monthly_counts.max()) if len(monthly_counts) else 0,
+        "avg_trades_per_month": float(action_changes.sum() / active_months),
+        "active_months": int(active_months),
+    }
+
+
+def policy_metrics_for_slice(net_returns, actions_slice, times_slice, bars_per_year):
     if len(net_returns) == 0:
-        return {"annual_return": np.nan, "total_return": np.nan, "max_drawdown": np.nan, "trades": 0}
+        return {
+            "annual_return": np.nan,
+            "total_return": np.nan,
+            "max_drawdown": np.nan,
+            "trades": 0,
+            "max_trades_per_month": 0,
+            "avg_trades_per_month": 0.0,
+        }
 
     equity_curve = np.cumprod(1 + net_returns)
     total_return = float(equity_curve[-1] - 1)
     annual_return = float(equity_curve[-1] ** (bars_per_year / len(net_returns)) - 1)
     running_peak = np.maximum.accumulate(equity_curve)
     max_dd = float(np.min(equity_curve / running_peak - 1))
-    trades = int(np.r_[True, actions_slice[1:] != actions_slice[:-1]].sum() - 1)
-    return {"annual_return": annual_return, "total_return": total_return, "max_drawdown": max_dd, "trades": trades}
+    trades = int(np.r_[False, actions_slice[1:] != actions_slice[:-1]].sum())
+    trade_stats = monthly_trade_stats(actions_slice, times_slice)
+    return {
+        "annual_return": annual_return,
+        "total_return": total_return,
+        "max_drawdown": max_dd,
+        "trades": trades,
+        **trade_stats,
+    }
 
 
 def evaluate_execution_params(q_values, future_ret, min_hold_bars, switch_margin, enter_margin):
@@ -1021,9 +1119,9 @@ for min_hold in MIN_HOLD_GRID:
             candidate_actions, candidate_net = evaluate_execution_params(
                 q_all, rewards_returns, min_hold, switch_margin, enter_margin
             )
-            train_metrics = policy_metrics_for_slice(candidate_net[:train_end], candidate_actions[:train_end], bars_per_year)
-            val_metrics = policy_metrics_for_slice(candidate_net[train_end:val_end], candidate_actions[train_end:val_end], bars_per_year)
-            test_metrics = policy_metrics_for_slice(candidate_net[val_end:], candidate_actions[val_end:], bars_per_year)
+            train_metrics = policy_metrics_for_slice(candidate_net[:train_end], candidate_actions[:train_end], state_times[:train_end], bars_per_year)
+            val_metrics = policy_metrics_for_slice(candidate_net[train_end:val_end], candidate_actions[train_end:val_end], state_times[train_end:val_end], bars_per_year)
+            test_metrics = policy_metrics_for_slice(candidate_net[val_end:], candidate_actions[val_end:], state_times[val_end:], bars_per_year)
             rows.append({
                 "min_hold_bars": min_hold,
                 "switch_margin": switch_margin,
@@ -1037,14 +1135,29 @@ for min_hold in MIN_HOLD_GRID:
                 "train_trades": train_metrics["trades"],
                 "val_trades": val_metrics["trades"],
                 "test_trades": test_metrics["trades"],
+                "train_max_trades_per_month": train_metrics["max_trades_per_month"],
+                "val_max_trades_per_month": val_metrics["max_trades_per_month"],
+                "test_max_trades_per_month": test_metrics["max_trades_per_month"],
+                "train_avg_trades_per_month": train_metrics["avg_trades_per_month"],
+                "val_avg_trades_per_month": val_metrics["avg_trades_per_month"],
+                "test_avg_trades_per_month": test_metrics["avg_trades_per_month"],
                 "validation_gap_to_target": abs(val_metrics["annual_return"] - TARGET_ANNUAL_RETURN),
                 "meets_target": val_metrics["annual_return"] >= TARGET_ANNUAL_RETURN,
-                "passes_risk_filter": (test_metrics["max_drawdown"] >= MAX_ACCEPTABLE_TEST_DRAWDOWN) and (test_metrics["trades"] <= MAX_TEST_TRADES),
+                "passes_trade_frequency_filter": (
+                    train_metrics["max_trades_per_month"] <= MAX_TRADES_PER_MONTH
+                    and val_metrics["max_trades_per_month"] <= MAX_TRADES_PER_MONTH
+                    and test_metrics["max_trades_per_month"] <= MAX_TRADES_PER_MONTH
+                ),
+                "passes_risk_filter": (
+                    test_metrics["max_drawdown"] >= MAX_ACCEPTABLE_TEST_DRAWDOWN
+                    and test_metrics["trades"] <= MAX_TEST_TRADES
+                    and test_metrics["max_trades_per_month"] <= MAX_TRADES_PER_MONTH
+                ),
             })
 
 search_results = pd.DataFrame(rows)
 qualified_results = search_results[
-    search_results["meets_target"] & search_results["passes_risk_filter"]
+    search_results["meets_target"] & search_results["passes_risk_filter"] & search_results["passes_trade_frequency_filter"]
 ].copy()
 
 if len(qualified_results) > 0:
@@ -1068,7 +1181,8 @@ print("Qualified candidates:", len(qualified_results), "of", len(search_results)
 cols = [
     "min_hold_bars", "switch_margin", "enter_margin",
     "val_ann_return", "test_ann_return", "val_max_drawdown", "test_max_drawdown",
-    "val_trades", "test_trades", "meets_target", "passes_risk_filter", "validation_gap_to_target"
+    "val_trades", "test_trades", "val_max_trades_per_month", "test_max_trades_per_month",
+    "meets_target", "passes_risk_filter", "passes_trade_frequency_filter", "validation_gap_to_target"
 ]
 display(ranked_results[cols].head(15))
 
@@ -1245,7 +1359,7 @@ fig.update_layout(
     legend={"orientation": "h", "y": 1.08, "x": 0},
     margin={"l": 60, "r": 30, "t": 95, "b": 40}
 )
-fig.show()
+show_plot(fig, name="dqn_policy_explained_decisions")
 
 decision_explanations = decision_df[[
     "time", "action", "net_return", "cumulative_return", "cnn_pattern", "gated_pattern",
@@ -1253,10 +1367,15 @@ decision_explanations = decision_df[[
     "q_short", "q_flat", "q_long", "window_start", "window_end"
 ]].reset_index(drop=True)
 
+trade_frequency = monthly_trade_stats(actions, state_times)
 summary = {
     "selected_min_hold_bars": int(best_params["min_hold_bars"]),
     "selected_switch_margin": float(best_params["switch_margin"]),
     "selected_enter_margin": float(best_params["enter_margin"]),
+    "max_allowed_trades_per_month": MAX_TRADES_PER_MONTH,
+    "observed_max_trades_per_month": trade_frequency["max_trades_per_month"],
+    "observed_avg_trades_per_month": trade_frequency["avg_trades_per_month"],
+    "passes_trade_frequency_filter": bool(trade_frequency["max_trades_per_month"] <= MAX_TRADES_PER_MONTH),
     "annualized_return": annual_return,
     "final_cumulative_return": float(cumulative_return[-1]),
     "max_drawdown": max_dd,
@@ -1547,7 +1666,7 @@ print("DQN action:", advice["latest_dqn_strategy"]["action"], advice["latest_dqn
 print("Risk decision:", advice["latest_risk_review"]["decision"], "|", advice["latest_risk_review"]["reason"])
 print("FINAL:", advice["final_recommendation"])
 print("Gemini status:", agentic_llm_report["status"], "| model:", agentic_llm_report["model"])
-print("Report display: inline in this Colab output")
+print("Report display: inline in this notebook output")
 
 _save_named_results(globals(), cell_idx=29)
 
@@ -1570,5 +1689,5 @@ Before class, run all cells once so TensorFlow and the data download are already
 
 # %% final inline output note
 _save_named_results(globals(), cell_idx="final")
-print("Colab run complete. Figures, tables, and the report were displayed inline; no output files were saved.")
+print("Notebook run complete. Figures, tables, and the report were displayed inline.")
 
