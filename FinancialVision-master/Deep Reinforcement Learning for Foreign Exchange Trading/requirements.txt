@@ -1,0 +1,5 @@
+TA-Lib==0.4.19
+tensorboard==1.15.0
+tensorflow==1.15.0
+tensorflow-estimator==1.15.1
+tensorforce==0.4.4
