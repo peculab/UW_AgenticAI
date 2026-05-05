@@ -1,26 +1,66 @@
 # Agentic AI FX Trading Demo: GAF-CNN + DQN
 
-本專案是一個教學用的外匯交易策略範例，將 OHLC K 線資料轉成 GAF 影像，用 CNN 辨識 8 類 K 線型態加上 `unknown`，再把 CNN 機率、近期報酬與信心分數輸入 DQN/QRL，產生 `short`、`flat`、`long` 交易動作。最後以 Agentic AI 角色封裝成訊號分析、策略建議、風險檢查與文字解釋。
+This repository contains a teaching demo for an Agentic AI foreign exchange trading workflow. It converts OHLC candlestick windows into Gramian Angular Field (GAF) images, uses a CNN to classify candlestick patterns, feeds the CNN output into a compact DQN/QRL trading policy, and wraps the full workflow with agent-style roles for signal analysis, strategy selection, risk review, and explanation.
 
-> 注意：本專案僅供課堂展示與研究，不是投資建議，也沒有連接真實下單系統。
+The project is designed for classroom use with University of Washington students.
 
-## 專案內容
+> Disclaimer: This project is for education and research only. It is not financial advice, and it does not connect to a live brokerage or execute real trades.
 
-| 檔案 / 資料夾 | 說明 |
+## What This Demo Does
+
+The main pipeline is:
+
+```text
+OHLC market data
+-> 10-bar candlestick window
+-> CULR representation
+-> GAF image, shape 10 x 10 x 4
+-> CNN candlestick pattern classifier
+-> DQN/QRL state vector
+-> short / flat / long action
+-> backtest and risk review
+-> Agentic AI explanation layer
+```
+
+The CNN predicts 9 classes:
+
+```text
+doji, hammer, hanging_man, shooting_star,
+bullish_engulfing, bearish_engulfing,
+morning_star, evening_star, unknown
+```
+
+The DQN policy uses:
+
+- 12 recent returns
+- 9 CNN candlestick pattern probabilities
+- 1 CNN confidence score
+
+The output action is one of:
+
+```text
+short, flat, long
+```
+
+## Repository Contents
+
+| Path | Description |
 |---|---|
-| `Trading_AgenticAI_GAF_CNN_DQN_Demo.py` | 主要 demo。下載 EUR/USD OHLC 資料，產生 GAF，載入 CNN，訓練 DQN，回測並輸出策略建議。 |
-| `cnn_model_10bar.h5` | 已訓練好的 CNN 模型。主程式預設直接讀取這個檔案。 |
-| `label8_eurusd_10bar_1500_500_val200_gaf_culr.pkl` | CNN 重新訓練資料，包含 train/val/test 的 GAF 影像與標籤。 |
-| `train_cnn_model.py` | 重新訓練 CNN 的腳本。訓練完成後會覆蓋輸出 `cnn_model_10bar.h5`。 |
-| `check_strategy.py` | 讀取 `results/agentic_context.json` 的輔助檢查腳本。若使用目前 Colab-ready 版本，主程式預設不會寫出 `results/`，需自行加入輸出儲存。 |
-| `requirements-colab.txt` | Colab / Python 環境依賴。 |
-| `PATTERN_STRATEGY_GUIDE.md` | CNN 型態到交易建議的對照說明。 |
-| `OPTIMIZATION_GUIDE.md` | DQN 訓練與策略參數優化建議。 |
-| `FinancialVision-master/` | 參考來源程式，包含 GAF-CNN 與外匯 DRL 範例。 |
+| `Trading_AgenticAI_GAF_CNN_DQN_Demo.py` | Main Colab-ready demo script. Downloads FX data, builds GAF images, loads the CNN, trains the DQN, runs a backtest, and generates an agentic strategy recommendation. |
+| `cnn_model_10bar.h5` | Pretrained CNN model used by default. Keep this file in the project root if you do not want to retrain the CNN. |
+| `label8_eurusd_10bar_1500_500_val200_gaf_culr.pkl` | Preprocessed GAF-CNN training dataset for retraining the CNN. |
+| `train_cnn_model.py` | Script for retraining the CNN model. It saves the updated model as `cnn_model_10bar.h5`. |
+| `check_strategy.py` | Helper script for inspecting `results/agentic_context.json` if you modify the main demo to save output files. |
+| `requirements-colab.txt` | Python package requirements for Colab or local execution. |
+| `PATTERN_STRATEGY_GUIDE.md` | Notes on mapping CNN candlestick patterns to strategy recommendations. |
+| `OPTIMIZATION_GUIDE.md` | Notes on DQN training and execution-parameter optimization. |
+| `FinancialVision-master/` | Reference implementation material for GAF-CNN candlestick classification and deep reinforcement learning for FX trading. |
 
-## 環境安裝
+## Setup
 
-建議使用 Python 3.10 或 Colab。Windows PowerShell 範例：
+You can run the project in Google Colab or in a local Python environment. Python 3.10 is recommended.
+
+### Local Setup on Windows PowerShell
 
 ```powershell
 cd C:\UW_AgenticAI
@@ -30,31 +70,44 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements-colab.txt
 ```
 
-如果本機執行時缺少 Plotly，請另外安裝：
+### Local Setup on macOS or Linux
 
-```powershell
-python -m pip install plotly
+```bash
+cd /path/to/UW_AgenticAI
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements-colab.txt
 ```
 
-## 直接使用已訓練模型
+## Run the Demo with the Pretrained Model
 
-如果不想重新訓練 CNN，只要保留根目錄的 `cnn_model_10bar.h5`，直接執行主程式即可：
+If you do not want to retrain the CNN, keep this file in the project root:
 
-```powershell
+```text
+cnn_model_10bar.h5
+```
+
+Then run:
+
+```bash
 python Trading_AgenticAI_GAF_CNN_DQN_Demo.py
 ```
 
-主流程會做以下事情：
+The script will:
 
-1. 從 Yahoo Finance 下載 `EURUSD=X` 的 1 小時 OHLC 資料。
-2. 若下載失敗，改用合成 OHLC 資料讓 demo 繼續執行。
-3. 將每個 10 根 K 線視窗轉成 `10 x 10 x 4` 的 GAF-CNN 輸入。
-4. 載入 `cnn_model_10bar.h5`，輸出 9 類 K 線型態機率。
-5. 用 `12` 個近期報酬、`9` 個 CNN 型態機率、`1` 個 CNN 信心分數組成 DQN state。
-6. 訓練 DQN，搜尋 `min_hold_bars`、`switch_margin`、`enter_margin` 等執行參數。
-7. 回測最佳參數，產生 `short / flat / long` 動作、績效摘要與 Agentic AI 風險審查。
+1. Download recent `EURUSD=X` hourly OHLC data from Yahoo Finance.
+2. Fall back to synthetic OHLC data if the download fails.
+3. convert 10-bar candlestick windows into `10 x 10 x 4` GAF images.
+4. Load `cnn_model_10bar.h5`.
+5. Predict 9-class candlestick pattern probabilities.
+6. Build DQN state vectors from recent returns, CNN probabilities, and CNN confidence.
+7. Train a compact DQN policy.
+8. Search execution parameters such as holding period and Q-value margins.
+9. Backtest the selected policy.
+10. Produce an agentic strategy recommendation and risk review.
 
-預設交易標的與資料週期在主程式上方可調整：
+The default market settings are near the top of `Trading_AgenticAI_GAF_CNN_DQN_Demo.py`:
 
 ```python
 TICKER = "EURUSD=X"
@@ -65,9 +118,16 @@ HORIZON = 8
 COST = 0.00002
 ```
 
-## 在專案中使用策略建議
+Students can try other Yahoo Finance FX tickers, such as:
 
-主程式最後會建立：
+```python
+TICKER = "GBPUSD=X"
+TICKER = "AUDUSD=X"
+```
+
+## Use the Model in a Trading Strategy
+
+The main script creates a structured strategy context near the end:
 
 ```python
 agentic_context, agentic_llm_report = interface_agent.advise(
@@ -78,22 +138,22 @@ agentic_context, agentic_llm_report = interface_agent.advise(
 )
 ```
 
-其中 `agentic_context` 是策略系統最適合被其他程式接上的結構化輸出，重要欄位如下：
+The most important fields are:
 
 ```python
 strategy = agentic_context["latest_dqn_strategy"]
 risk = agentic_context["latest_risk_review"]
 final = agentic_context["final_recommendation"]
 
-print(strategy["action"])        # short / flat / long
-print(strategy["q_values"])      # DQN 對三個動作的 Q-value
+print(strategy["action"])        # short, flat, or long
+print(strategy["q_values"])      # DQN Q-values for short / flat / long
 print(strategy.get("pattern_info"))
-print(risk["decision"])          # approve / reduce / block
+print(risk["decision"])          # approve, reduce, or block
 print(risk["suggested_position_size"])
 print(final)
 ```
 
-實際交易策略可以用這個邏輯接入自己的系統：
+A simple downstream position-sizing rule could look like this:
 
 ```python
 if risk["decision"] == "block":
@@ -106,41 +166,58 @@ else:
     target_position = 0.0
 ```
 
-目前系統只輸出建議，不會自動下單。要接交易 API 時，請另外加入下單、倉位限制、停損停利、滑價、交易時段與錯誤重試機制。
+This converts the model recommendation into a target position:
 
-## CNN 型態與策略對照
+```text
++1.0  full long
++0.5  reduced long
+ 0.0  flat
+-0.5  reduced short
+-1.0  full short
+```
 
-`StrategyAgent.pattern_to_action` 內建下列規則：
+The current project does not place live orders. To connect it to a real trading system, students would need to add brokerage integration, order validation, position limits, stop-loss/take-profit rules, slippage assumptions, logging, and failure handling.
 
-| CNN 型態 | 型態建議 | 預設信心門檻 |
-|---|---:|---:|
-| `doji` | `flat` | `0.70` |
-| `hammer` | `long` | `0.60` |
-| `hanging_man` | `short` | `0.60` |
-| `shooting_star` | `short` | `0.70` |
-| `bullish_engulfing` | `long` | `0.50` |
-| `bearish_engulfing` | `short` | `0.50` |
-| `morning_star` | `long` | `0.60` |
-| `evening_star` | `short` | `0.60` |
-| `unknown` | `flat` | `0.00` |
+## CNN Pattern Strategy Rules
 
-DQN 最終仍會依 Q-value 選擇動作；CNN 型態規則主要用於補充說明、信心判斷與衝突偵測。如果 CNN 高信心建議與 DQN 動作不同，`latest_dqn_strategy` 會包含 `conflict_detected` 與 `conflict_note`。
+`StrategyAgent.pattern_to_action` maps each CNN candlestick pattern to a teaching recommendation:
 
-## 重新訓練 CNN 模型
+| CNN Pattern | Suggested Action | Confidence Threshold | Interpretation |
+|---|---:|---:|---|
+| `doji` | `flat` | `0.70` | Indecision; wait for confirmation. |
+| `hammer` | `long` | `0.60` | Bullish reversal pattern. |
+| `hanging_man` | `short` | `0.60` | Bearish reversal pattern. |
+| `shooting_star` | `short` | `0.70` | Strong bearish signal. |
+| `bullish_engulfing` | `long` | `0.50` | Strong bullish reversal. |
+| `bearish_engulfing` | `short` | `0.50` | Strong bearish reversal. |
+| `morning_star` | `long` | `0.60` | Bullish three-candle pattern. |
+| `evening_star` | `short` | `0.60` | Bearish three-candle pattern. |
+| `unknown` | `flat` | `0.00` | Pattern is unclear; stay neutral. |
 
-若要重新訓練 K 線型態 CNN，確認根目錄存在：
+The DQN still chooses the final action from Q-values. The pattern rule is used for explanation, reliability checks, and conflict detection. If a high-confidence CNN pattern disagrees with the DQN action, `latest_dqn_strategy` includes:
+
+```python
+strategy["conflict_detected"]
+strategy["conflict_note"]
+```
+
+## Retrain the CNN Model
+
+Retraining is optional. The repository already includes `cnn_model_10bar.h5`.
+
+To retrain the CNN, make sure the preprocessed dataset is present:
 
 ```text
 label8_eurusd_10bar_1500_500_val200_gaf_culr.pkl
 ```
 
-然後執行：
+Then run:
 
-```powershell
+```bash
 python train_cnn_model.py
 ```
 
-訓練腳本設定：
+The training script uses:
 
 ```python
 PARAMS["classes"] = 9
@@ -149,27 +226,27 @@ PARAMS["epochs"] = 50
 PARAMS["batch_size"] = 64
 ```
 
-輸出模型會存成根目錄的：
+After training, the script saves the model to:
 
 ```text
 cnn_model_10bar.h5
 ```
 
-因此重新訓練後，不需要改主程式，直接再次執行：
+Because the main demo loads `cnn_model_10bar.h5` from the project root, the retrained model can be used immediately:
 
-```powershell
+```bash
 python Trading_AgenticAI_GAF_CNN_DQN_Demo.py
 ```
 
-## 調整 DQN 與交易參數
+## Tune the DQN and Execution Rules
 
-DQN 訓練在 `train_dqn()`：
+The DQN training call is:
 
 ```python
 train_dqn(states, rewards_returns, episodes=15, gamma=0.98, epsilon=0.30, max_steps=300)
 ```
 
-參數搜尋在 `MIN_HOLD_GRID`、`SWITCH_MARGIN_GRID`、`ENTER_MARGIN_GRID`：
+Execution-parameter search is controlled by:
 
 ```python
 MIN_HOLD_GRID = [12, 24, 48, 72, 120, 168]
@@ -177,13 +254,26 @@ SWITCH_MARGIN_GRID = [0.0001, 0.0005, 0.001, 0.002, 0.003, 0.005, 0.008, 0.010, 
 ENTER_MARGIN_GRID = [0.00005, 0.0001, 0.0005, 0.001, 0.002, 0.003, 0.005, 0.008, 0.010]
 ```
 
-想要更保守，可提高 `min_hold_bars`、`switch_margin`、`enter_margin`，讓策略少換倉。想要更多交易機會，可降低這些門檻，但通常會增加交易成本與回撤風險。
+General teaching intuition:
 
-## Gemini 解釋層
+- Higher `min_hold_bars` means fewer trades and longer holding periods.
+- Higher `switch_margin` means the model needs stronger evidence before switching positions.
+- Higher `enter_margin` means the model needs stronger evidence before leaving `flat`.
+- Lower thresholds usually create more trades, but may increase transaction costs and drawdown.
 
-`GeminiExplanationAgent` 是選用功能。若沒有設定 API key，程式會產生 deterministic fallback report，不會中斷。
+## Optional Gemini Explanation Layer
 
-若要啟用 Gemini：
+`GeminiExplanationAgent` is optional. If `GEMINI_API_KEY` is not set, the script uses a deterministic fallback report and continues running.
+
+To enable Gemini:
+
+```bash
+export GEMINI_API_KEY="your_api_key"
+export GEMINI_MODEL="gemini-2.5-flash"
+python Trading_AgenticAI_GAF_CNN_DQN_Demo.py
+```
+
+On Windows PowerShell:
 
 ```powershell
 $env:GEMINI_API_KEY="your_api_key"
@@ -191,39 +281,50 @@ $env:GEMINI_MODEL="gemini-2.5-flash"
 python Trading_AgenticAI_GAF_CNN_DQN_Demo.py
 ```
 
-## GitHub 上傳建議
+## Notes for GitHub Upload
 
-初始化 Git：
+This folder is not necessarily initialized as a Git repository yet. To create one:
 
-```powershell
+```bash
 git init
-git add README.md requirements-colab.txt *.py *.md cnn_model_10bar.h5 label8_eurusd_10bar_1500_500_val200_gaf_culr.pkl FinancialVision-master
+git add .
 git commit -m "Add GAF-CNN DQN trading demo"
 ```
 
-資料檔 `label8_eurusd_10bar_1500_500_val200_gaf_culr.pkl` 約 75 MB，低於 GitHub 單檔 100 MB 限制，但仍偏大。若之後模型或資料超過 100 MB，請改用 Git LFS：
+The dataset file is about 75 MB, which is under GitHub's 100 MB single-file limit, but it is still large. If future datasets or models exceed 100 MB, use Git LFS:
 
-```powershell
+```bash
 git lfs install
 git lfs track "*.h5" "*.pkl"
 git add .gitattributes
 ```
 
-建議不要上傳：
+The included `.gitignore` excludes common local files:
 
 ```text
 .venv/
 __pycache__/
 .ipynb_checkpoints/
+.vscode/
 jupyter_stdout.log
 jupyter_stderr.log
+results/
 ```
 
-## 參考來源
+## Suggested Student Exercises
 
-本專案整合並改寫自 `FinancialVision-master` 中的兩個方向：
+1. Change `TICKER` and compare EUR/USD, GBP/USD, and AUD/USD.
+2. Change `WINDOW` and inspect how the GAF images change.
+3. Adjust CNN confidence thresholds and observe how many signals are gated to `unknown`.
+4. Tune DQN training parameters and compare annualized return, drawdown, and trade count.
+5. Modify `StrategyAgent.pattern_to_action` and test how rule-based pattern advice interacts with DQN actions.
+6. Add code to save `agentic_context` as JSON for later strategy analysis.
+
+## References
+
+This teaching demo builds on the reference material included in `FinancialVision-master/`:
 
 - Encoding Candlesticks as Images for Patterns Classification Using Convolutional Neural Networks
 - Deep Reinforcement Learning for Foreign Exchange Trading
 
-請保留原始引用與授權資訊，並在 README 或報告中說明本專案是教學改作版本。
+When reusing this project in reports or assignments, please cite the original papers and clearly state that this repository is an educational adaptation.
