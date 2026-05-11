@@ -16,7 +16,18 @@ except Exception:
         for obj in objs:
             print(obj)
 
-IN_NOTEBOOK = _importlib_util.find_spec("IPython") is not None
+def _running_in_notebook():
+    try:
+        from IPython import get_ipython
+        shell = get_ipython()
+        if shell is None:
+            return False
+        shell_name = shell.__class__.__name__
+        return shell_name == "ZMQInteractiveShell" or "google.colab" in _sys.modules
+    except Exception:
+        return False
+
+IN_NOTEBOOK = _running_in_notebook()
 try:
     _SCRIPT_DIR = _Path(__file__).resolve().parent
 except NameError:
@@ -1689,5 +1700,8 @@ Before class, run all cells once so TensorFlow and the data download are already
 
 # %% final inline output note
 _save_named_results(globals(), cell_idx="final")
-print("Notebook run complete. Figures, tables, and the report were displayed inline.")
+if SAVE_RESULTS:
+    print(f"Run complete. Figures, tables, and reports were saved to: {RESULTS_DIR}")
+else:
+    print("Notebook run complete. Figures, tables, and the report were displayed inline.")
 
